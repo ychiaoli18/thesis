@@ -15,6 +15,7 @@
 \usepackage[nospace]{cite}  % for smart citation
 %\usepackage{geometry}  % for easy margin settings
 \usepackage{ntuthesis}
+\usepackage{multirow,multicol,rotating}
 
 %
 % margins setting
@@ -42,7 +43,7 @@
     % running pdftex, with...
     \ifnum\pdfoutput>0
       % ... PDF output
-      \usepackage[pdftex]{graphicx}
+      %\usepackage[pdftex]{graphicx}
       \newcommand\myworkflow{pdftex}  % set the flag
     \else
       %...DVI output
@@ -92,8 +93,8 @@
 
 
 % Title Page
-\renewcommand{\enTitle}{Reinforce Semantic Retrieval with Pseudo-Relevance Feedback and Acoustic Information}  %英文標題
-\renewcommand{\zhTitle}{使用虛擬回饋與聲學資訊強化語義搜尋}  %中文標題
+\renewcommand{\enTitle}{Enhanced Semantic Retrieval of Spoken Content with Query Expansion and Automatically Discovered Acoustic Patterns}  %英文標題
+\renewcommand{\zhTitle}{使用查詢詞擴展與自動習得之聲學片段強化語音數位內容之語意檢索}  %中文標題
 \renewcommand{\authorZhName}{李昀樵}  %作者中文姓名
 \renewcommand{\authorEnName}{Yun-Chiao Li}  %作者英文姓名
 \renewcommand{\authorStudentID}{R01942062}  %作者學號
@@ -107,7 +108,7 @@
 \renewcommand{\zhMonth}{六}  %中文月份
 \renewcommand{\enYear}{2014}  %公元紀年
 \renewcommand{\enMonth}{June}  %英文月份
-\renewcommand{\oralDate}{103 年 6 月 15 日}  %口試日期
+\renewcommand{\oralDate}{103 年 6 月 23 日}  %口試日期
 
 %
 % listing setting
@@ -205,13 +206,13 @@ commentstyle=\upshape,% 預設是斜體字，會影響註解裏的英文，改�
   \input{chapters/chapter1}
 \chapter{背景知識}
   \input{chapters/chapter2}
-\chapter{以自動尋找之語音片段加強監督式語義搜尋}
+\chapter{以自動尋找之語音片段加強監督式語意檢索}
   \input{chapters/chapter3}
-\chapter{以自動尋找之語音片段實現無監督式語義搜尋}
+\chapter{以自動尋找之語音片段實現非監督式語意檢索}
   \input{chapters/chapter4}
-\chapter{利用遞迴式類神經網路語言模型加強無監督式語義搜尋}
+\chapter{利用遞迴式類神經網路語言模型加強非監督式語音文件檢索}
   \input{chapters/chapter5}
-\chapter{在Google Glass上實作個人化的語音辨識與新聞搜尋系統}
+\chapter{在Google Glass上實作個人化的語音辨識與新聞檢索系統}
   \input{chapters/chapter6}
 \chapter{結論與展望}
   \input{chapters/chapter7}

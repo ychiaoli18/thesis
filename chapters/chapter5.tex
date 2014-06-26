@@ -1,13 +1,156 @@
+\label{sec:chap5}
 \section{簡介}
+在上一章中，我們探討了如何使用聲學片段進行非監督式語意檢索。但另一方面，我們觀察到使用聲學片段時的問題：由於聲學片段在訓練時是採用非監督式方法的，因此訓練時系統並無法知道聲音對應到的文字是什麼，導致在分群時無法知道同音的字的意思是什麼，進而使得聲學片段在訓練時會盡量將同樣發音的字群組在一起。以上所述狀況會使檢索結果變差許多，因為同一個聲學片段事實上是對應到很多不同的字，舉其中一個聲學片段為例，其中包含了「網、王、亡、望、往」等字。因此本章試圖解決聲學片段的模糊性，比如說如果能將「網、王、亡、望、往」分為「網」、「王」、「亡」、「望」、「往」等五群，即可大幅地提升檢索系統的成效了。
 
-\section{基於遞迴式類神經網路語言模型之詞向量}
+在此我們使用了其於遞迴式類神經網路語言模型 (Recurrent Neural Network Language Model)~\cite{mikolov2010recurrent, mikolov2011extensions, mikolov2012context} 之詞表示法 (Word Representation)，此一詞表示法可以將每一個詞或字表示為一固定長度的向量，並被認為能有效地表示詞或字在句法 (Syntactic)
+和語意上的相似度~\cite{mikolov2013linguistic}。由於同一個聲學片段中包含了許多實際上含義不同的字，因此我們的目的是將聲學片段表示為詞表示法，並基於詞表示法為這些聲學片段做分群，以期在句法和詞義的基礎上將原本同音的聲學片段分為不同的聲學片段。
 
-\section{以詞向量改善無監督式語義搜尋}
+
+\section{基於遞迴式類神經網路語言模型之詞表示法}
+
+\subsection{遞迴式類神經網路語言模型}
+\subsubsection{模型結構}
+如圖 ~\ref{fig:chap5_rnn_structure} 所示，遞迴式類神經網路語言模型主要可以分為三個層級：
+\begin{figure}
+\centering
+\includegraphics[scale=0.3]{images/chap5_rnn_structure.png}
+\caption{遞迴式類神經網路語言模型示意圖} \label{fig:chap5_rnn_structure}
+\end{figure}
+
+
+1. 輸入層 (Input Layer)：是一個與辭典大小同長度的陣列，採用的是1-of-N編碼 (1-of-N Encoding)形式，輸入為前一個詞在辭典裡的索引 $w(t)$，而只有該索引的位置的值為一，其餘皆為零。
+
+2. 輸出層 (Output Layer)：同樣是一個與辭典大小同長度的陣列，也是採用1-of-N編碼形式，代表的是該模型對下一個字出現機率分布的預測 $y(t)$。
+
+3. 潛藏層 (Hidden Layer)：或稱上下文層(Context Layer)，通常維度較小，代表的是該時間點此模型保存的上下文資訊 $s(t)$。此層與輸入層、輸出層各有一組權重矩陣 (Weight Matrix) ，$\mathcal{U}$和$\mathcal{V}$，與上一個時間點的潛藏層向量 $s(t-1)$ 也存在一組權重矩陣 $\mathcal{W}$，其用意是為了模擬上下文間的相依關係。
+
+有了以上三層與矩陣後，可以將輸入層、潛藏層及輸出層的關係表示如下：
+
+\begin{equation}
+s(t) = f(\mathcal{U}\times w(t) + \mathcal{W}\times s(t-1))
+\end{equation}
+
+\begin{equation}
+y(t) = g(\mathcal{V}\times s(t))
+\end{equation}
+
+其中的$f(\cdot)$和$g(\cdot)$分別為邏輯函式 (Logistic Function) 與 Soft-Max 函式：
+
+\begin{equation}
+f(z) = \frac{1}{1+e^{-z}}
+\end{equation}
+
+\begin{equation}
+g(z_m) = \frac{e^{z_m}}{\sum_k e^{z_k}}
+\end{equation}
+
+\subsubsection{最佳化演算法-沿時間反向傳播}
+沿時間反向傳播的核心精神是基於反向傳播演算法 (Back Propagation) 而來，反向傳播演算法是訓練類神經網路 (Neural Network) 的最佳化演算法，而反向傳播演算法主要的步驟包含了以下三個部分：
+
+1. 給定一筆訓練範例 (Training Example) 及現階段的模型參數組合，從輸入層向輸出層做順向傳遞 (Forward Pass) ，輸出現階段模型的預測結果 $y_j$，$0<j<|V|$。
+
+2. 根據第一步中模型的輸出結果 $y_j$，與真正的結果 $d_j$ 間計算誤差值，在語言模型中誤差函數 (Error Function) 為交叉熵 (Cross Entropy)：
+
+\begin{equation}
+\label{equ:chap5_error_function}
+E = \sum_j d_j \log{y_j}
+\end{equation}
+
+3. 根據第二步算出來的誤差函數，計算其一階倒數 (First Derivative)，調整進來的權重 (Incoming Weight)，並重複將這個誤差訊號利用連鎖法則 (Chain Rule) 往前傳遞，直到傳回輸入層為止。
+
+假設$y_j$與$z_j$分別是輸出節點$j$的輸出訊號與輸入訊號，$y_i$是潛藏節點 $i$ 的輸出訊號。其中$y_j=f(z_j)$經過一個激活函數 (Activation Function) $f(\cdot)$轉換。假設已知誤差函數為式 ~\ref{equ:chap5_error_function}，我們就可以計算它對$y_j$的一次偏微$\frac{\partial E}{\partial y_j} = \frac{d_j}{y_j}$，根據連鎖法則，即可推得：
+
+\begin{equation}
+\frac{\partial E}{\partial z_j} = \frac{\partial E}{\partial y_j} \frac{y_j}{z_j} = f^{'}(z_j) \frac{\partial E}{\partial y_j}
+\end{equation}
+
+且：
+\begin{equation}
+\frac{\partial E}{\partial y_i} = \sum_j \frac{\partial E}{\partial z_j} \frac{\partial z_j}{\partial y_i} = \sum_j w_{ij} \frac{\partial E}{\partial z_j}
+\end{equation}
+
+故我們可以推得誤差函數 $E$ 對權重 $w_{ij}$ 的一階導數：
+
+\begin{equation}
+\frac{\partial E}{\partial w_{ij}} = \frac{\partial E}{\partial z_j} \frac{\partial z_j}{\partial w_{ij}} = y_i \frac{\partial E}{\partial z_j} 
+\end{equation}
+
+而此值就被拿來當作梯度下降法 (Gradient Decent) 中更新權重 $w_{ij}$ 的依據。
+
+沿時間反向傳播演算法~\cite{boden2002guide}是由反向傳播演算法而來，其唯一不同之處是在做模型訓練之前，必須根據所設定的展開時間層數，將潛藏層往前展開 $N$ 層，圖 ~\ref{fig:chap5_bptt}
+中顯示的是將潛藏層往前展開四層的結果。展開之後其實相當於訓練兩個前饋式類神經網路，一為圖中的上半部，包含輸出層、原始潛藏層及輸入層，另一為圖中的下半部，包含所有沿時間展開的潛藏層及其對應的輸入層。另一方面，由於模型有隱含序列的特性，因此在訓練的過程中必須保持序列的順序一筆一筆餵入作訓練。訓練後各時間點的潛藏層與潛藏層間的權重矩陣將被取平均，以讓各時間點的權重相同。
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.3]{images/chap5_bptt.png}
+\caption{將潛藏層向前展開四層的示意圖} \label{fig:chap5_bptt}
+\end{figure}
+
+\subsection{基於遞迴式類神經語言模型之詞表示法}
+傳統的詞表示法通常將字表示為 1-of-N 編碼，即每個詞都被表示成一個辭典大小的陣列，只有那個詞對應到的維度是一，其它都是零。這種詞表示法的缺點是將每個詞都視為獨立的詞，即詞與詞之間是無相關性的。舉例來說，如果辭典中有「Hotel」、「Hostel」兩個字。1-of-N 編碼會將這兩個字表示為：
+
+\[
+   hotel = [1\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0] \\ 
+\]
+\[
+   hostel = [0\ 0\ 1\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0\ 0]
+\]
+
+於是「Hotel」與「Hostel」兩字的詞表示法取內積後為零，但這是不合理的狀況，因為這兩個字有很強烈的語意關係，因此就有人提出了使用連續空間的詞表示法 (Continuous Space Word Representation)~\cite{collobert2008unified, turian2010word}
+，此一方法的目的是用一個高維度的實數陣列代表一個詞，並且當兩個詞在句法上和含義上相近的時候會讓兩個詞表示法很接近。類神經網路語言模型的一個特色是它們將字表示成高維度的實數陣列，而這些詞表示法甚至可以用在許多自然語言處理的工作上。基於遞迴式類神經網路語言模型的詞表示法是目前被廣泛使用的詞表示法之一~\cite{mikolov2010recurrent}，模型中的 $\mathcal{U}$ 是一個 $\mathcal{H} \times \mathcal{L}$ 的矩陣，其中 $\mathcal{H}$ 是隱藏層的維度，$\mathcal{L}$則是辭典的長度，而 $\mathcal{U}$
+中的每一欄都代表一個詞的詞表示法。雖然類神經網路語言模型在訓練時完全沒有句法(Syntax)、構詞(Morphology)、或語意(Semantics)相關的資訊，但很令人驚訝地，靠著沿時間反向傳遞演算法的最佳化就能夠非常好地在句法和語意上描述這些詞表示法~\cite{mikolov2013linguistic}。
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.15]{images/chap5_word_rep.png}
+\caption{基於遞迴式類神經網路語言模型之詞表示法示意圖} \label{fig:chap5_word_rep}
+\end{figure}
+
+圖 ~\ref{fig:chap5_word_rep}
+中示意了基於遞迴式類神經網路語言模型之詞表示法，並將這些詞表示法降為兩維後畫在圖上，由圖中可以看出詞表示法表示詞的能力：如在圖中右方，「今天」、「明天、「昨天」，「晚上」、「晚間」、「上午」、「下午」都被畫在很接近的位置，而這些詞都是用來表示時間的詞彙，又例如圖中下方的「布希」、「陳水扁」被畫得非常接近，而這是由於在這些語料錄製的年份，這兩個人分別是美國與台灣的總統，由這些例子可以看出，雖然遞迴式類神經網路語言模型之詞表示法訓練的過程中是沒有任何關於語意的知識的，但是它卻可以很好地捕捉到詞彙在語意上的資訊，因此很適合用在自然語言處理。
+
+\section{以詞表示法改善非監督式語意檢索}
+\label{sec:chap5_algorithm}
+演算法之示意如圖 ~\ref{fig:chap5_system}，圖上方的紫色框框中為訓練資料，其中的每一行代表一句由聲學片段組合而成的句子，由於其中每一個聲學片段實際上都可能代表了很多不同的詞或字，因此我們在每一次的迴圈當中要對一個聲學片段進行分群。我們的做法是在每一個迴圈中選定一個聲學片段進行分群，如圖 ~\ref{fig:chap5_system} 中的迴圈中選定了 $p_1$ 這個聲學片段，並將所有的 $p_1$ 視為是不同的聲學片段，如 $p_{1\_1},
+p_{1\_2}, p_{1\_3}, ...$，並進行K平均分群演算法 (K-Means Clustering) 基於這些詞和字的詞表示法進行分群，由於這些詞表示法攜有了許多的句法和詞義的資訊，因此這個分群的結果會將這些聲學片段按照句法和語意分開，以期在進行K平均分群後，每一群中包含的聲學片段對應到的中文詞彙會盡量一致。
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.6]{images/chap5_system.png}
+\caption{演算法示意圖} \label{fig:chap5_system}
+\end{figure}
+
+演算法的步驟為在每個迴圈都從所有的聲學片段中選一個聲學片段（選過的不再選），稱為 $p$，並在這個迴圈中重複以下的步驟：
+
+1. 將訓練語料中所有的$p$都視為不同的聲學片段，亦即將所有的$p$按照出現順序改為$p_1, p_2, p_3...$。
+
+2. 將修改後的訓練語料做為遞迴式類神經網路語言模型的訓練語料，並訓練一套遞迴式類神經網路語言模型。
+
+3. 取出遞迴式類神經網路語言模型的$\mathcal{U}$做為所有聲學片段的詞表示法，並用K平均分群法將這些詞表示法分為K群，這K群的聲學片段即為不同的聲學片段，標示為$p_{k1}, p_{k2}, p_{k3}, ...$。
+
 
 \section{實驗基礎架構}
+本章實驗所使用的設定同 ~\ref{sec:chap4_exp_setup}，使用的語料為2001年間從電台廣播中錄下的4小時新聞，並手動切成5034篇語音文件，每篇語音文件大約包含了$1至3$句的語句。用來辨識的語言模型是用1999年間收集的新聞文章 (包含4000萬個詞彙)
+訓練而成，辭典中包含了62000個詞彙，聲學模型是用2000年間收集的8小時廣播新聞訓練而成的音節內(Intra-syllable) 右方資訊相依(Right-context-dependent) 聲韻母模型 (Initial-Final Models)。辨識後的唯一最佳序列的字元正確率為 (Character Accuracy) 為75.27\%。
+本章中使用的聲學片段設定為將 5034 句的新聞語音文件辨識成 208 個字單位的語音片段。
+總共測試了30組口語查詢詞，這些口語查詢詞都使用了 ~\ref{sec:chap4_decode_query} 轉為對應的聲學片段查詢詞，每組查詢詞都有人工標注對應的相關文件，而這些相關文件中「一定要」包含查詢詞。
 
 \section{實驗結果}
+實驗結果如圖 ~\ref{fig:chap5_result1} 和 ~\ref{fig:chap5_result2} 所示。橫軸為迴圈的次數，每次迴圈都從中找出一個聲學片段進行 ~\ref{sec:chap5_algorithm} 的演算法，由於總共有208個聲學片段，因此橫軸到208後即為對所有的聲學片段都執行一次演算法。縱軸為檢索結果的平均準確率，紅線為檢索系統的基準 (Baseline) 檢索結果，同 ~\ref{fig:chap4_resulta} 中的紅線，為使用動態時間扭曲產生的第一次檢索結果。 
 
-\section{實驗結果及分析}
+\begin{figure}
+\centering
+\includegraphics[scale=0.5]{images/chap5_result1.png}
+\caption{實驗結果：K分群法的K設定為4，潛藏層長度設為100} \label{fig:chap5_result1}
+\includegraphics[scale=0.5]{images/chap5_result2.png}
+\caption{實驗結果：K分群法的K設定為5，潛藏層長度設為100} \label{fig:chap5_result2}
+\end{figure}
+
+由圖中可以觀察到，在大部分的時間點，此方法都能使檢索的成效增加，在最高點的平均準確率可以到達$12.23\%$，進步量相對於基準檢索結果為$21.4\%$，證明此方法確實能有效地將同音的聲學片段切為對檢索結果更有貢獻的聲學片段，並給予聲學片段更多地語意資訊，但此方法的缺點目前的強健性 (Robustness) 還不夠，無法讓平均準確率在所有的迴圈中都穩定上升，但能夠讓某些聲學片段有很大幅的成長。未來可能的改進方向如下：
+
+1. 嘗試用不同的分群演算法，並使用開發語料 (Development Set) 調整分群演算法的參數。
+
+2. 觀察為何有些聲學片段能獲得大幅的進步，並試圖找出判斷依據，如此一來就可以只分會獲得進步的聲學片段，並不要對會退步的聲學片段做這套演算法。
 
 \section{本章總結}
+本章試圖解決聲學片段在訓練時只考慮同音的問題，並試圖為聲學片段加入更多的句法與語意資訊，再將加入額外資訊的聲學片段應用於語音文件檢索系統中，並獲致了初步的進步。

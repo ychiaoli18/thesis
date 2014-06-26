@@ -10,7 +10,6 @@ thesis:
 	bibtex $(DIST_DIR)/$@
 	pdflatex --output-directory=$(DIST_DIR) $@
 	pdflatex --output-directory=$(DIST_DIR) $@
-	xdg-open $(DIST_DIR)/$@.pdf
 
 clean:
 	rm -rf $(DIST_DIR)
